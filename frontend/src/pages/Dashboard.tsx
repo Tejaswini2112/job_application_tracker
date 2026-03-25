@@ -1,40 +1,50 @@
-import { useEffect, useState } from "react";
-import { apiFetch, parseJson } from "../api/client";
-
-type Summary = {
-  totalApplications: number;
-  responseRate: number;
-  interviewsScheduled: number;
-};
+import { useCallback, useEffect, useState } from "react";
+import { getAnalyticsSummary } from "../api/analytics";
+import { ApiError, getErrorMessage } from "../api/http";
+import type { AnalyticsSummary } from "../api/types";
 
 export function Dashboard() {
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadSummary = useCallback(async () => {
+    setError(null);
+    setSummary(null);
+    setLoading(true);
+    try {
+      const data = await getAnalyticsSummary();
+      setSummary(data);
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : getErrorMessage(e, "Could not load analytics")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiFetch("/analytics/summary");
-        if (!res.ok) {
-          setError("Could not load analytics");
-          return;
-        }
-        const data = await parseJson<Summary>(res);
-        if (!cancelled) setSummary(data);
-      } catch {
-        if (!cancelled) setError("Could not load analytics");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void loadSummary();
+  }, [loadSummary]);
+
+  if (loading && !error) {
+    return (
+      <div className="container">
+        <p className="muted">Loading…</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
-      <div className="container">
+      <div className="container stack">
         <p className="error">{error}</p>
+        <button type="button" className="primary" onClick={() => void loadSummary()}>
+          Retry
+        </button>
       </div>
     );
   }
@@ -42,7 +52,7 @@ export function Dashboard() {
   if (!summary) {
     return (
       <div className="container">
-        <p className="muted">Loading…</p>
+        <p className="muted">No data.</p>
       </div>
     );
   }

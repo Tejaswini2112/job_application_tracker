@@ -7,14 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiFetch, parseJson } from "../api/client";
-
-export type User = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-};
+import { getCurrentUser, login, register } from "../api/auth";
+import { ApiError, getErrorMessage } from "../api/http";
+import type { User } from "../api/types";
 
 type AuthState = {
   user: User | null;
@@ -31,6 +26,8 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+
+export type { User };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
@@ -56,15 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch("/auth/me");
-        if (!res.ok) {
-          if (res.status === 401) logout();
-          return;
-        }
-        const me = await parseJson<User>(res);
+        const me = await getCurrentUser();
         if (!cancelled) setUser(me);
-      } catch {
-        logout();
+      } catch (err) {
+        const e = err instanceof ApiError ? err : null;
+        if (e?.status === 401) {
+          logout();
+        } else if (!cancelled) {
+          logout();
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -74,44 +71,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [token, logout]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await apiFetch("/auth/login", {
-      method: "POST",
-      skipAuth: true,
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await parseJson<{ token: string; user: User; error?: string }>(
-      res
-    );
-    if (!res.ok) {
-      throw new Error(data.error ?? "Login failed");
+  const loginUser = useCallback(async (email: string, password: string) => {
+    try {
+      const data = await login(email, password);
+      localStorage.setItem("token", data.token);
+      setToken(data.token);
+      setUser(data.user);
+    } catch (e) {
+      throw new Error(getErrorMessage(e, "Login failed"));
     }
-    localStorage.setItem("token", data.token);
-    setToken(data.token);
-    setUser(data.user);
   }, []);
 
-  const register = useCallback(
+  const registerUser = useCallback(
     async (data: {
       firstName: string;
       lastName: string;
       email: string;
       password: string;
     }) => {
-      const res = await apiFetch("/auth/register", {
-        method: "POST",
-        skipAuth: true,
-        body: JSON.stringify(data),
-      });
-      const body = await parseJson<{ token: string; user: User; error?: string }>(
-        res
-      );
-      if (!res.ok) {
-        throw new Error(body.error ?? "Registration failed");
+      try {
+        const body = await register(data);
+        localStorage.setItem("token", body.token);
+        setToken(body.token);
+        setUser(body.user);
+      } catch (e) {
+        throw new Error(getErrorMessage(e, "Registration failed"));
       }
-      localStorage.setItem("token", body.token);
-      setToken(body.token);
-      setUser(body.user);
     },
     []
   );
@@ -121,11 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       token,
       loading,
-      login,
-      register,
+      login: loginUser,
+      register: registerUser,
       logout,
     }),
-    [user, token, loading, login, register, logout]
+    [user, token, loading, loginUser, registerUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
