@@ -6,16 +6,22 @@ import notesRoutes from "./routes/notes.js";
 import analyticsRoutes from "./routes/analytics.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { env, corsAllowedOrigins } from "./config/env.js";
 
 const app = express();
 
+// Behind Render / other reverse proxies — use for correct req.ip / secure cookies if you add them later
+if (env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
+    origin: corsAllowedOrigins(),
     credentials: false,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
