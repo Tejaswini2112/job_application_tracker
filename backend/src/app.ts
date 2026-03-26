@@ -27,6 +27,10 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.use(cors({
+  origin: "https://your-vercel-url.vercel.app"
+}));
+
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", authMiddleware, applicationsRoutes);
 app.use("/api/notes", authMiddleware, notesRoutes);
